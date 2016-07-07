@@ -13,7 +13,8 @@ import org.jsoup.select.Elements;
 
 import redis.clients.jedis.Jedis;
 import redis.clients.jedis.Transaction;
-
+//URLSet: Redis set (sadd) of URLS that contain a given search term. key for each URLSet = "URLSet:searchterm"
+//TermCounter: Redis hash (hset) kind of like hashmap. maps each term that appears on a page to # of times it appears. key for each TermCounter = "TermCounter:url"
 /**
  * Represents a Redis-backed web search index.
  * 
@@ -67,8 +68,8 @@ public class JedisIndex {
 	 * @return Set of URLs.
 	 */
 	public Set<String> getURLs(String term) {
-        // FILL THIS IN!
-		return null;
+		//FILLED IN
+        return jedis.smembers(urlSetKey(term));
 	}
 
     /**
@@ -78,8 +79,14 @@ public class JedisIndex {
 	 * @return Map from URL to count.
 	 */
 	public Map<String, Integer> getCounts(String term) {
-        // FILL THIS IN!
-		return null;
+		//FILLED IN
+        //get URLs containing term from URLSet:term
+        //get counts per URL from TermCounter:url
+        Map<String, Integer> countMap = new HashMap<>();
+        for(String url: getURLs(term)){
+        	countMap.put(url, getCount(url, term));
+        }
+		return countMap;
 	}
 
     /**
@@ -90,8 +97,8 @@ public class JedisIndex {
 	 * @return
 	 */
 	public Integer getCount(String url, String term) {
-        // FILL THIS IN!
-		return null;
+        // FILLED IN
+		return Integer.parseInt(jedis.hget(termCounterKey(url),term));
 	}
 
 
@@ -102,7 +109,21 @@ public class JedisIndex {
 	 * @param paragraphs  Collection of elements that should be indexed.
 	 */
 	public void indexPage(String url, Elements paragraphs) {
-        // FILL THIS IN!
+        // FILLED IN 
+        TermCounter tc = new TermCounter(url);
+        tc.processElements(paragraphs);
+        indexPageInRedis(tc,url,termCounterKey(url));
+	}
+
+	private void indexPageInRedis(TermCounter tc, String url, String redisHash){
+		Transaction trans = jedis.multi();
+		//check for/delete old entry
+		trans.del(redisHash);
+		for(String keyTerm: tc.keySet()){
+			trans.sadd(urlSetKey(keyTerm), url); //add to URLSet: term, urls that contain that term
+			trans.hset(redisHash, keyTerm, tc.get(keyTerm).toString()); //add to TermCounter: hash, term, count
+		}
+		trans.exec();
 	}
 
 	/**
